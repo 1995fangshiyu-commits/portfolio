@@ -120,16 +120,6 @@ export default class Preloader extends EventEmitter {
       this.secondTimeline = new GSAP.timeline();
 
       this.secondTimeline
-        // .to(
-        //   ".intro-text .animatedis",
-        //   {
-        //     yPercent: 100,
-        //     stagger: 0.05,
-        //     ease: "back.in(1.7)",
-        //   },
-        //   "fadeout"
-        // )
-
         .to(
           ".arrow-svg-wrapper",
           {
@@ -246,20 +236,89 @@ export default class Preloader extends EventEmitter {
         );
     });
   }
+
+  // Accelerate firstIntro when user scrolls during it
+  onScrollDuringFirstIntro(e) {
+    if (e.deltaY > 0 && this.timeline) {
+      this.timeline.timeScale(4);
+      // Remove listener once triggered — only accelerate once
+      window.removeEventListener("wheel", this.firstIntroScrollEvent);
+      this.removeTouchListeners();
+    }
+  }
+
+  onTouchDuringFirstIntro(e) {
+    this.firstIntroTouchStart = e.touches[0].clientY;
+  }
+
+  onTouchMoveDuringFirstIntro(e) {
+    const touchEnd = e.touches[0].clientY;
+    const diff = this.firstIntroTouchStart - touchEnd;
+    if (diff > 20 && this.timeline) {
+      this.timeline.timeScale(4);
+      window.removeEventListener("wheel", this.firstIntroScrollEvent);
+      this.removeTouchListeners();
+    }
+  }
+
+  removeTouchListeners() {
+    window.removeEventListener("touchstart", this.firstIntroTouchStartEvent);
+    window.removeEventListener("touchmove", this.firstIntroTouchMoveEvent);
+  }
+
+  // Trigger secondIntro on scroll (existing logic)
   onScroll(e) {
     if (e.deltaY > 0) {
       window.removeEventListener("wheel", this.scrollOnceEvent);
+      window.removeEventListener("touchstart", this.touchStartEvent);
+      window.removeEventListener("touchmove", this.touchMoveEvent);
+      this.playSecondIntro();
+    }
+  }
+
+  onTouchStart(e) {
+    this.initialY = e.touches[0].clientY;
+  }
+
+  onTouchMove(e) {
+    const currentY = e.touches[0].clientY;
+    const diff = this.initialY - currentY;
+    if (diff > 20) {
+      window.removeEventListener("wheel", this.scrollOnceEvent);
+      window.removeEventListener("touchstart", this.touchStartEvent);
+      window.removeEventListener("touchmove", this.touchMoveEvent);
       this.playSecondIntro();
     }
   }
 
   async playIntro() {
+    // Listen for scroll/touch during firstIntro to accelerate it
+    this.firstIntroScrollEvent = this.onScrollDuringFirstIntro.bind(this);
+    this.firstIntroTouchStartEvent = this.onTouchDuringFirstIntro.bind(this);
+    this.firstIntroTouchMoveEvent = this.onTouchMoveDuringFirstIntro.bind(this);
+
+    window.addEventListener("wheel", this.firstIntroScrollEvent);
+    window.addEventListener("touchstart", this.firstIntroTouchStartEvent);
+    window.addEventListener("touchmove", this.firstIntroTouchMoveEvent);
+
     await this.firstIntro();
 
+    // Clean up firstIntro listeners (in case user didn't scroll)
+    window.removeEventListener("wheel", this.firstIntroScrollEvent);
+    this.removeTouchListeners();
+
+    // Now listen for scroll/touch to trigger secondIntro
     this.scrollOnceEvent = this.onScroll.bind(this);
+    this.touchStartEvent = this.onTouchStart.bind(this);
+    this.touchMoveEvent = this.onTouchMove.bind(this);
+
     window.addEventListener("wheel", this.scrollOnceEvent);
+    window.addEventListener("touchstart", this.touchStartEvent);
+    window.addEventListener("touchmove", this.touchMoveEvent);
   }
+
   async playSecondIntro() {
     await this.secondIntro();
+    this.emit("enablecontrols");
   }
 }
